@@ -157,6 +157,23 @@ extension AppDelegate {
         renameTab(at: library.notes.count - 1, to: "From Finder")
         library.notes.removeLast()
 
+        // 4d. Save on the close question writes a never-saved note out, then
+        // closes it; an empty note closes without asking.
+        library.notes.append(Note(text: "Keep me\nbody"))
+        refreshTabs()
+        closeTab(at: library.notes.count - 1)
+        wait(until: { false }, seconds: 0.3)
+        answerClose("save")
+        let keptFile = saveDirectory.appendingPathComponent("Keep me.txt")
+        print("saved from the close question: \(manager.fileExists(atPath: keptFile.path)), notes \(library.notes.count)")
+        if !manager.fileExists(atPath: keptFile.path) { problems.append("save on close did not write the note") }
+        if library.notes.contains(where: { $0.text == "Keep me\nbody" }) { problems.append("save on close left the tab open") }
+        library.notes.append(Note(text: "  \n"))
+        refreshTabs()
+        closeTab(at: library.notes.count - 1)
+        if library.notes.contains(where: { $0.text == "  \n" }) { problems.append("an empty note asked before closing") }
+        try? manager.removeItem(at: keptFile)
+
         // 5. A note with nothing to name it still saves.
         library.notes.append(Note(text: "   \n\n"))
         library.active = library.notes.count - 1
@@ -312,8 +329,24 @@ extension AppDelegate {
         renameTab(at: 1, to: nil)
         if tabBar.notes[1].title != library.notes[1].text { problems.append("clearing a rename did not restore the first line") }
 
+        // Closing a note that was never saved asks first: cancel keeps it,
+        // discard closes it. An empty one just closes.
         closeTab(at: 1)
-        wait(until: { false }, seconds: 0.5)
+        wait(until: { false }, seconds: 0.3)
+        let asked = evaluate("window.__notesAskVisible()") as? Bool == true
+        print("asked before closing an unsaved note: \(asked), active \(library.active)")
+        if !asked || library.notes.count != 2 { problems.append("closing an unsaved note did not ask first") }
+        if library.active != 1 { problems.append("the note being asked about was not brought to the front") }
+        closeTab(at: 1)
+        if library.notes.count != 2 { problems.append("a second close slipped past the open question") }
+        answerClose("cancel")
+        if library.notes.count != 2 { problems.append("cancel closed the note anyway") }
+        closeTab(at: 1)
+        wait(until: { false }, seconds: 0.3)
+        answerClose("discard")
+        wait(until: { false }, seconds: 0.3)
+        if library.notes.count != 1 { problems.append("discard did not close the note") }
+        if evaluate("window.__notesAskVisible()") as? Bool == true { problems.append("the question stayed up after closing") }
         let afterClose = Int(number("window.notesEditor.heldNotes()"))
         print("states held after closing a note: \(afterClose)")
         if afterClose != 1 { problems.append("closing a note did not release its state, \(afterClose) held") }
@@ -912,6 +945,17 @@ final class PageRender: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
             wait(seconds: 0.3) { false }
             snapshot(named: "page-outline-open")
         }
+
+        // The close question, in both themes.
+        run("document.head.insertAdjacentHTML('beforeend', '<style>.notes-ask, .notes-ask-card"
+            + " { transition: none !important; }</style>');"
+            + " window.__notesAskToClose('Save changes to “A Mid-Semester Project Report”?',"
+            + " 'Closing discards the edits not saved to Report.md.')")
+        wait(seconds: 0.3) { false }
+        snapshot(named: "page-ask-dark")
+        run("document.documentElement.setAttribute('data-theme', 'light')")
+        wait(seconds: 0.3) { false }
+        snapshot(named: "page-ask-light")
 
         done = true
     }

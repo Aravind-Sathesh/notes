@@ -255,6 +255,82 @@
     return outline.hidden ? null : editor.headings().map(function (h) { return h.title; });
   };
 
+  // ---------------------------------------------------------- save or discard
+  //
+  // The app asks before closing a tab with words that would otherwise be lost;
+  // the answer goes back as "save", "discard" or "cancel". Return saves, Escape
+  // cancels, Cmd+Delete discards — the keys a system sheet would use.
+
+  var ask = document.createElement('div');
+  ask.className = 'notes-ask';
+  ask.hidden = true;
+  ask.innerHTML =
+    '<div class="notes-ask-card" role="alertdialog" aria-modal="true">'
+    + '<div class="title"></div>'
+    + '<div class="detail"></div>'
+    + '<div class="buttons">'
+    + '<button type="button" class="discard" data-choice="discard">Discard</button>'
+    + '<span class="spacer"></span>'
+    + '<button type="button" data-choice="cancel">Cancel</button>'
+    + '<button type="button" class="primary" data-choice="save">Save</button>'
+    + '</div></div>';
+  document.body.appendChild(ask);
+  var askTitle = ask.querySelector('.title');
+  var askDetail = ask.querySelector('.detail');
+  var askSave = ask.querySelector('[data-choice="save"]');
+  var askHideTimer = null;
+
+  function askShowing() { return ask.classList.contains('showing'); }
+
+  function hideAsk() {
+    ask.classList.remove('showing');
+    clearTimeout(askHideTimer);
+    askHideTimer = setTimeout(function () { if (!askShowing()) ask.hidden = true; }, 160);
+    editor.focus();
+  }
+
+  function answer(choice) {
+    if (!askShowing()) return;
+    hideAsk();
+    window.webkit.messageHandlers.closeChoice.postMessage(choice);
+  }
+
+  window.__notesAskToClose = function (title, detail) {
+    askTitle.textContent = title;
+    askDetail.textContent = detail;
+    clearTimeout(askHideTimer);
+    ask.hidden = false;
+    void ask.offsetWidth;  // start the fade from the hidden state
+    ask.classList.add('showing');
+    askSave.focus();
+  };
+
+  // The app withdraws the question when the tab it was about stops being
+  // the one in front.
+  window.__notesDismissAsk = function () { if (askShowing()) hideAsk(); };
+  window.__notesAskVisible = askShowing;
+
+  ask.addEventListener('mousedown', function (event) {
+    if (event.target === ask) answer('cancel');
+  });
+  ask.addEventListener('click', function (event) {
+    var choice = event.target.getAttribute && event.target.getAttribute('data-choice');
+    if (choice) answer(choice);
+  });
+  document.addEventListener('keydown', function (event) {
+    if (!askShowing()) return;
+    var choice = null;
+    if (event.key === 'Escape') choice = 'cancel';
+    else if (event.key === 'Backspace' && event.metaKey) choice = 'discard';
+    else if (event.key === 'Enter') {
+      choice = (document.activeElement && document.activeElement.getAttribute('data-choice')) || 'save';
+    }
+    if (!choice) return;
+    event.preventDefault();
+    event.stopPropagation();
+    answer(choice);
+  }, true);
+
   window.__notesFindShow = function () {
     // Seed from the selection, the way a system find bar does.
     var selected = editor.getSelectedText();

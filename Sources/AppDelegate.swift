@@ -18,6 +18,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     /// measured against. Not persisted; read from the files at launch.
     private var diskText: [UUID: String] = [:]
 
+    /// The tab waiting on the save-or-discard card. Held by id, so the answer
+    /// still finds it if tabs have moved in the meantime.
+    private var closing: UUID?
+
     /// Files Finder handed over before the page could show them.
     private var pendingFiles: [URL] = []
     var pageReady = false
@@ -137,6 +141,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     /// is what carries its undo history across a tab switch.
     private func showActiveNote() {
         let note = library.activeNote
+        if let id = closing, id != note.id {
+            closing = nil
+            webView?.evaluateJavaScript("window.__notesDismissAsk()")
+        }
         guard let id = jsLiteral(note.id.uuidString), let text = jsLiteral(note.text) else { return }
         let isMarkdown = ["md", "markdown"].contains(
             note.filePath.map { URL(fileURLWithPath: $0).pathExtension.lowercased() } ?? ""
@@ -162,13 +170,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         showActiveNote()
     }
 
+    /// Closing is the one way to lose words here: a note never saved goes with
+    /// its tab, and one bound to a file loses what was not written to it. So
+    /// those ask first, in front, where you can see what is being closed.
+    /// The last tab closes the window and quits, which keeps every note.
     func closeTab(at index: Int) {
-        guard library.notes.indices.contains(index) else { return }
+        guard library.notes.indices.contains(index), closing == nil else { return }
         guard library.notes.count > 1 else {
             window.performClose(nil)
             return
         }
 
+        let note = library.notes[index]
+        let wouldLose = note.filePath == nil
+            ? !note.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            : tabBar.unsaved.contains(note.id)
+        guard wouldLose, pageReady,
+              let title = jsLiteral("Save changes to “\(note.title)”?"),
+              let detail = jsLiteral(note.filePath.map {
+                  "Closing discards the edits not saved to \(URL(fileURLWithPath: $0).lastPathComponent)."
+              } ?? "This note has never been saved. Closing deletes it.") else {
+            removeTab(at: index)
+            return
+        }
+        select(index)
+        closing = note.id
+        webView?.evaluateJavaScript("window.__notesAskToClose(\(title), \(detail))")
+    }
+
+    func answerClose(_ choice: String) {
+        guard let id = closing else { return }
+        closing = nil
+        webView?.evaluateJavaScript("window.__notesDismissAsk()")
+        guard let index = library.notes.firstIndex(where: { $0.id == id }) else { return }
+        switch choice {
+        case "save":
+            // Saving can fail or be cancelled; the tab stays open if it does.
+            guard index == library.active, writeActiveNote() else { return }
+            removeTab(at: index)
+        case "discard":
+            removeTab(at: index)
+        default:
+            break
+        }
+    }
+
+    private func removeTab(at index: Int) {
         let removed = library.notes.remove(at: index)
         diskText[removed.id] = nil
         if let id = jsLiteral(removed.id.uuidString) {
@@ -226,7 +273,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     // Cmd+S is a separate thing: it writes the note out as a plain text file
     // you own, and remembers where, so saving again overwrites that file.
 
-    @objc func saveNote() {
+    @objc func saveNote() { writeActiveNote() }
+
+    /// True once the note is on disk.
+    @discardableResult
+    private func writeActiveNote() -> Bool {
         let note = library.activeNote
         let existing = note.filePath.map { URL(fileURLWithPath: $0) }
 
@@ -241,7 +292,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
                 alert.informativeText = "Saving replaces what another app wrote to it since it was opened here."
                 alert.addButton(withTitle: "Overwrite")
                 alert.addButton(withTitle: "Cancel")
-                guard alert.runModal() == .alertFirstButtonReturn else { return }
+                guard alert.runModal() == .alertFirstButtonReturn else { return false }
             }
             let url = try existing ?? unusedSaveURL(for: note)
             try note.text.write(to: url, atomically: true, encoding: .utf8)
@@ -253,10 +304,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             store.save(library)
             refreshTabs()
             flash("saved to \(shortPath(url))")
+            return true
         } catch {
             // Writing can fail for reasons worth seeing: no permission to the
             // Documents folder, a full disk, a file that moved.
             report(error, title: "Could not save this note")
+            return false
         }
     }
 
@@ -478,6 +531,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             library.notes[index].text = text
             store.save(library)
             refreshTabs()
+
+        case "closeChoice":
+            guard let choice = message.body as? String else { return }
+            answerClose(choice)
 
         case "theme":
             guard let variables = message.body as? [String: String],

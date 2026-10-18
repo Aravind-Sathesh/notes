@@ -154,3 +154,62 @@
 .notes-card div.level-1 { margin-top: 6px; }
 .notes-card div:first-child { margin-top: 0; }
 .notes-card div.current { font-weight: 600; }
+
+/* ---- save or discard ---- */
+
+/* Asked before a tab with unsaved words closes. Drawn in the page, in the
+   page's own surface, rather than as a system alert. */
+.notes-ask {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 18vh 16px 0;
+  background: rgba(0, 0, 0, 0.28);
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+[data-theme="light"] .notes-ask { background: rgba(0, 0, 0, 0.12); }
+.notes-ask[hidden] { display: none; }
+.notes-ask.showing { opacity: 1; }
+.notes-ask-card {
+  width: 340px;
+  max-width: 100%;
+  padding: 18px 18px 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.3);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg);
+  transform: translateY(-6px) scale(0.98);
+  transition: transform 200ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.notes-ask.showing .notes-ask-card { transform: none; }
+.notes-ask .title {
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.notes-ask .detail { color: var(--dim); margin: 6px 0 16px; }
+.notes-ask .buttons { display: flex; gap: 8px; }
+.notes-ask .buttons .spacer { flex: 1; }
+.notes-ask button {
+  font-family: inherit;
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+}
+.notes-ask button:hover { border-color: var(--dim); }
+.notes-ask button:focus { outline: none; }
+.notes-ask button:focus-visible { outline: 1px solid var(--dim); outline-offset: 2px; }
+.notes-ask button.discard { border-color: transparent; color: var(--dim); padding-left: 4px; padding-right: 4px; }
+.notes-ask button.discard:hover { color: var(--fg); }
+.notes-ask button.primary { background: var(--fg); border-color: var(--fg); color: var(--bg); }
