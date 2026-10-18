@@ -198,7 +198,7 @@
   // The note's headings, shown only for markdown files. At rest it is a column
   // of ticks on the right edge, one per heading, with the section in view lit;
   // hovering anywhere down that edge opens the list as an overlay, so the note
-  // keeps its full width. Headings inside fenced code are not headings.
+  // keeps its full width. editor.headings() decides what is a heading.
 
   var outlineStyle = document.createElement('style');
   outlineStyle.textContent = [
@@ -320,31 +320,12 @@
     event.preventDefault();
   }, { passive: false });
 
-  function headings(text) {
-    var found = [];
-    var fence = null;
-    var offset = 0;
-    text.split('\n').forEach(function (line) {
-      var marker = /^\s{0,3}(`{3,}|~{3,})/.exec(line);
-      if (marker && (!fence || marker[1][0] === fence)) {
-        fence = fence ? null : marker[1][0];
-      } else if (!fence) {
-        var heading = /^ {0,3}(#{1,6})\s+(.*?)\s*#*\s*$/.exec(line);
-        if (heading && heading[2]) {
-          found.push({ level: heading[1].length, title: heading[2], offset: offset });
-        }
-      }
-      offset += line.length + 1;
-    });
-    return found;
-  }
-
   var SHADES = [1, 0.72, 0.54, 0.42];
   var TICKS = [18, 13, 9, 6];
   var list = [];
 
   function renderOutline() {
-    list = outline.hidden ? [] : headings(editor.getText());
+    list = outline.hidden ? [] : editor.headings();
     ticks.textContent = '';
     card.textContent = '';
     editorBox.classList.toggle('has-outline', list.length > 0);
@@ -396,8 +377,8 @@
   function jumpTo(heading, index) {
     var preview = document.getElementById('preview');
     if (preview && !preview.hidden) {
-      // ponytail: matched by position, so a setext heading in the preview
-      // throws the count off; map by source line if that ever matters.
+      // The outline and the preview come from the same parser, so the nth
+      // heading in one is the nth in the other.
       var rendered = preview.querySelectorAll('h1, h2, h3, h4, h5, h6')[index];
       if (rendered) rendered.scrollIntoView({ block: 'start' });
       return;
@@ -428,7 +409,7 @@
     renderOutline();
   };
   window.__notesOutlineTitles = function () {
-    return outline.hidden ? null : headings(editor.getText()).map(function (h) { return h.title; });
+    return outline.hidden ? null : editor.headings().map(function (h) { return h.title; });
   };
 
   window.__notesFindShow = function () {

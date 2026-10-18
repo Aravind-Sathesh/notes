@@ -108,6 +108,36 @@ md.use({
   },
 });
 
+// The outline's headings, read by the parser the preview renders with, so the
+// two agree on what is a heading and in what order — setext headings and
+// headings inside lists and quotes included. A nested heading's offset is that
+// of the block holding it, since marked strips the `>` and indent it sat in.
+function headingsOf(text) {
+  const found = [];
+  const scratch = document.createElement("div");
+
+  function visit(token, offset) {
+    if (token.type === "heading") {
+      scratch.innerHTML = md.parseInline(token.text);
+      const title = scratch.textContent.trim();
+      if (title) found.push({ level: token.depth, title, offset });
+      return;
+    }
+    const children =
+      token.type === "list" ? token.items
+      : token.type === "blockquote" || token.type === "list_item" ? token.tokens
+      : [];
+    (children || []).forEach((child) => visit(child, offset));
+  }
+
+  let at = 0;
+  for (const token of md.lexer(text)) {
+    visit(token, at);
+    at += token.raw.length;
+  }
+  return found;
+}
+
 // -------------------------------------------------------------------- API
 
 function create(options) {
@@ -205,6 +235,12 @@ function create(options) {
     selectAll() {
       view.dispatch({ selection: { anchor: 0, head: view.state.doc.length } });
       view.focus();
+    },
+
+    /// [{ level, title, offset }] in document order, matching the preview's
+    /// rendered h1–h6 one for one.
+    headings() {
+      return headingsOf(view.state.doc.toString());
     },
 
     getSelectedText() {

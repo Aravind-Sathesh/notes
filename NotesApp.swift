@@ -1304,14 +1304,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         print("outline for a .txt note: \(plainOutline ?? "nil")")
         if plainOutline != "null" { problems.append("a .txt note showed an outline") }
         let markdownFile = saveDirectory.appendingPathComponent("Doc.md")
-        try? "# Top\ntext\n## Sub ##\n```\n# not a heading\n```\n### Deep".write(
+        try? "# Top\ntext\n## Sub ##\n```\n# not a heading\n```\n### Deep\n\nUnder **lined**\n---\n\n> ## Quoted".write(
             to: markdownFile, atomically: true, encoding: .utf8
         )
         openFile(markdownFile)
         wait(until: { false }, seconds: 0.4)
         let markdownOutline = evaluate(outlineScript) as? String
         print("outline for a .md note: \(markdownOutline ?? "nil")")
-        if markdownOutline != "[\"Top\",\"Sub\",\"Deep\"]" { problems.append("the .md outline is wrong") }
+        if markdownOutline != "[\"Top\",\"Sub\",\"Deep\",\"Under lined\",\"Quoted\"]" { problems.append("the .md outline is wrong") }
+        // Every offset lands on its heading's line, so a click jumps to it.
+        let landing = evaluate("JSON.stringify(window.notesEditor.headings().map(function (h) {"
+            + " return window.notesEditor.getText().slice(h.offset).split('\\n')[0]; }))") as? String
+        print("outline offsets land on: \(landing ?? "nil")")
+        if landing != "[\"# Top\",\"## Sub ##\",\"### Deep\",\"Under **lined**\",\"> ## Quoted\"]" {
+            problems.append("an outline offset does not land on its heading")
+        }
 
         // 4c. Renaming a note bound to a file renames the file, keeps its
         // extension, survives a case-only change, and never clobbers.
