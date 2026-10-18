@@ -252,6 +252,9 @@ final class TabBarView: NSView {
 
     var theme = Theme.dark { didSet { needsDisplay = true } }
 
+    /// Notes whose text differs from the file they are bound to.
+    var unsaved: Set<UUID> = [] { didSet { if unsaved != oldValue { needsDisplay = true } } }
+
     var onSelect: ((Int) -> Void)?
     var onClose: ((Int) -> Void)?
     var onNew: (() -> Void)?
@@ -295,7 +298,7 @@ final class TabBarView: NSView {
 
     private func labelRect(_ index: Int) -> NSRect {
         let tab = tabRect(index)
-        let trailing = notes.count > 1 ? closeSide + 8 : 10
+        let trailing = notes.count > 1 || unsaved.contains(notes[index].id) ? closeSide + 8 : 10
         return NSRect(x: tab.minX + 10, y: tab.minY, width: tab.width - 10 - trailing, height: tab.height)
     }
 
@@ -390,7 +393,17 @@ final class TabBarView: NSView {
             )
         }
 
-        if showClose {
+        // The macOS convention: a dot where the close button is, until you
+        // reach for the close button.
+        if unsaved.contains(notes[index].id), !(showClose && hovered == index) {
+            draw(
+                glyph: "●",
+                in: closeRect(index),
+                color: isActive ? theme.foreground : theme.dim,
+                size: 8,
+                weight: .regular
+            )
+        } else if showClose {
             draw(
                 glyph: "×",
                 in: closeRect(index),
@@ -696,6 +709,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     private var library = Library.empty
     private var theme = Theme.dark
 
+    /// What each file-bound note's file held when it was last opened, saved or
+    /// re-read: the baseline that both "unsaved" and "changed on disk" are
+    /// measured against. Not persisted; read from the files at launch.
+    private var diskText: [UUID: String] = [:]
+
     /// Files Finder handed over before the page could show them.
     private var pendingFiles: [URL] = []
     private var pageReady = false
@@ -707,6 +725,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         library = store.load()
+        for note in library.notes {
+            guard let path = note.filePath,
+                  let text = try? String(contentsOf: URL(fileURLWithPath: path), encoding: .utf8) else { continue }
+            diskText[note.id] = text
+        }
+        // Coming back from another app is when a file is likeliest to have
+        // been changed underneath a note.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in self?.checkFilesOnDisk() }
 
         tabBar = TabBarView()
         tabBar.notes = library.notes
@@ -795,6 +823,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     private func refreshTabs() {
         tabBar.notes = library.notes
         tabBar.active = library.active
+        tabBar.unsaved = Set(library.notes.filter { note in
+            note.filePath != nil && diskText[note.id].map { $0 != note.text } == true
+        }.map(\.id))
     }
 
     /// Hands the active note to the page. The text is authoritative on first
@@ -835,6 +866,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         }
 
         let removed = library.notes.remove(at: index)
+        diskText[removed.id] = nil
         if let id = jsLiteral(removed.id.uuidString) {
             webView?.evaluateJavaScript("window.__notesDropNote(\(id))")
         }
@@ -898,11 +930,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             try FileManager.default.createDirectory(
                 at: saveDirectory, withIntermediateDirectories: true
             )
+            if let existing, let known = diskText[note.id],
+               let disk = try? String(contentsOf: existing, encoding: .utf8), disk != known {
+                let alert = NSAlert()
+                alert.messageText = "“\(existing.lastPathComponent)” changed on disk"
+                alert.informativeText = "Saving replaces what another app wrote to it since it was opened here."
+                alert.addButton(withTitle: "Overwrite")
+                alert.addButton(withTitle: "Cancel")
+                guard alert.runModal() == .alertFirstButtonReturn else { return }
+            }
             let url = try existing ?? unusedSaveURL(for: note)
             try note.text.write(to: url, atomically: true, encoding: .utf8)
+            diskText[note.id] = note.text
 
             library.notes[library.active].filePath = url.path
             store.save(library)
+            refreshTabs()
             flash("saved to \(shortPath(url))")
         } catch {
             // Writing can fail for reasons worth seeing: no permission to the
@@ -977,7 +1020,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
 
         do {
             let text = try String(contentsOf: url, encoding: .utf8)
-            library.notes.append(Note(text: text, filePath: url.path))
+            let note = Note(text: text, filePath: url.path)
+            library.notes.append(note)
+            diskText[note.id] = text
             library.active = library.notes.count - 1
             store.save(library)
             refreshTabs()
@@ -986,6 +1031,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         } catch {
             report(error, title: "Could not open \(url.lastPathComponent)")
         }
+    }
+
+    /// Re-reads every file-bound note's file. A note you have not touched
+    /// follows its file; one you have edited asks, so neither side is lost.
+    func checkFilesOnDisk() {
+        guard pageReady else { return }
+        for note in library.notes {
+            guard let path = note.filePath, let known = diskText[note.id],
+                  let disk = try? String(contentsOf: URL(fileURLWithPath: path), encoding: .utf8),
+                  disk != known else { continue }
+            if note.text == known {
+                reload(note.id, with: disk)
+                continue
+            }
+            let alert = NSAlert()
+            alert.messageText = "“\(URL(fileURLWithPath: path).lastPathComponent)” changed on disk"
+            alert.informativeText = "This note has edits that are not saved to the file."
+            alert.addButton(withTitle: "Keep My Version")
+            alert.addButton(withTitle: "Use the File’s Version")
+            if alert.runModal() == .alertFirstButtonReturn {
+                // The file's new text becomes the baseline, so this is asked
+                // once, and the next save overwrites it knowingly.
+                diskText[note.id] = disk
+                refreshTabs()
+            } else {
+                reload(note.id, with: disk)
+            }
+        }
+    }
+
+    /// Replaces a note's text with its file's. The page's state for it is
+    /// dropped rather than edited, so its undo history cannot reach back into
+    /// text that is no longer there.
+    private func reload(_ id: UUID, with text: String) {
+        guard let index = library.notes.firstIndex(where: { $0.id == id }),
+              let literal = jsLiteral(id.uuidString) else { return }
+        library.notes[index].text = text
+        diskText[id] = text
+        webView?.evaluateJavaScript("window.__notesDropNote(\(literal))")
+        if index == library.active { showActiveNote() }
+        store.save(library)
+        refreshTabs()
     }
 
     @objc private func showOpenPanel() {
@@ -1297,6 +1384,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         if library.activeNote.filePath != external.path {
             problems.append("reopening a file did not select the note already holding it")
         }
+
+        // 4a. A file-bound note knows when it differs from its file, and an
+        // untouched one follows its file when another app changes it.
+        let finder = library.active
+        let finderID = library.notes[finder].id
+        if tabBar.unsaved.contains(finderID) { problems.append("a note just opened shows as unsaved") }
+        try? "changed elsewhere".write(to: external, atomically: true, encoding: .utf8)
+        checkFilesOnDisk()
+        wait(until: { false }, seconds: 0.4)
+        let followed = evaluate("window.notesEditor.getText()") as? String
+        print("after another app changed the file: \(library.notes[finder].text.debugDescription), page \(followed.debugDescription)")
+        if library.notes[finder].text != "changed elsewhere" || followed != "changed elsewhere" {
+            problems.append("an untouched note did not follow its file")
+        }
+        library.notes[finder].text = "opened from disk\nsecond line"
+        refreshTabs()
+        print("unsaved after an edit: \(tabBar.unsaved.contains(finderID))")
+        if !tabBar.unsaved.contains(finderID) { problems.append("an edited note does not show as unsaved") }
+        saveNote()
+        print("unsaved after saving: \(tabBar.unsaved.contains(finderID))")
+        if tabBar.unsaved.contains(finderID) { problems.append("saving did not clear the unsaved mark") }
 
         // 4b. A markdown file gets an outline of its headings; a text file none.
         let outlineScript = "JSON.stringify(window.__notesOutlineTitles())"
