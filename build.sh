@@ -38,7 +38,7 @@ iconutil -c icns "$BUILD/icon.iconset" -o "$APP/Contents/Resources/AppIcon.icns"
 
 echo "assembling bundle…"
 mv "$BUILD/Notes" "$APP/Contents/MacOS/Notes"
-cp notes.html bridge.js bridge.css codemirror.js "$APP/Contents/Resources/"
+cp notes.html bridge.js bridge.css codemirror.js THIRD_PARTY_NOTICES.md "$APP/Contents/Resources/"
 cp -R fonts "$APP/Contents/Resources/fonts"
 
 cat > "$APP/Contents/Info.plist" <<'PLIST'
