@@ -1,5 +1,5 @@
 #!/bin/bash
-# Builds Notes.app from NotesApp.swift + notes.html. Re-run after editing either.
+# Builds Notes.app from Sources/*.swift and the page files. Re-run after editing any.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -19,7 +19,7 @@ if [ -x tools/node_modules/.bin/esbuild ]; then
 fi
 
 echo "compiling…"
-swiftc NotesApp.swift -O -o "$BUILD/Notes" -framework Cocoa -framework WebKit
+swiftc Sources/*.swift -O -o "$BUILD/Notes" -framework Cocoa -framework WebKit
 
 echo "rendering icon…"
 # icon.png is the artwork when it is there; the built-in mark is the fallback,
@@ -38,7 +38,7 @@ iconutil -c icns "$BUILD/icon.iconset" -o "$APP/Contents/Resources/AppIcon.icns"
 
 echo "assembling bundle…"
 mv "$BUILD/Notes" "$APP/Contents/MacOS/Notes"
-cp notes.html bridge.js codemirror.js "$APP/Contents/Resources/"
+cp notes.html bridge.js bridge.css codemirror.js "$APP/Contents/Resources/"
 cp -R fonts "$APP/Contents/Resources/fonts"
 
 cat > "$APP/Contents/Info.plist" <<'PLIST'
