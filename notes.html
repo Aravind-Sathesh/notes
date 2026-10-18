@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>notes</title>
+
+<!-- iOS / Safari "Add to Home Screen" metadata -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="notes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#101010">
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23101010'/%3E%3Ctext x='50' y='66' font-family='monospace' font-size='58' font-weight='700' fill='%23ededed' text-anchor='middle'%3E%3E_%3C/text%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' fill='%23101010'/%3E%3Ctext x='90' y='118' font-family='monospace' font-size='104' font-weight='700' fill='%23ededed' text-anchor='middle'%3E%3E_%3C/text%3E%3C/svg%3E">
+
+<!-- Vendored, so the page needs no network at all. -->
+<link href="fonts/jetbrains-mono.css" rel="stylesheet">
+<style>
+  :root {
+    --bg: #101010;
+    --fg: #ededed;
+    --dim: #6b6b6b;
+    --border: #262626;
+    --sel: rgba(237, 237, 237, 0.22);
+    --match: rgba(237, 237, 237, 0.18);
+    --match-current: rgba(237, 237, 237, 0.42);
+  }
+  [data-theme="light"] {
+    --bg: #f5f5f5;
+    --fg: #141414;
+    --dim: #8a8a8a;
+    --border: #dcdcdc;
+    --sel: rgba(20, 20, 20, 0.16);
+    --match: rgba(20, 20, 20, 0.13);
+    --match-current: rgba(20, 20, 20, 0.26);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    margin: 0;
+    /* No rubber-band overscroll. WKWebView exposes no switch for this on
+       macOS, so it is suppressed per scroll container in CSS. */
+    overscroll-behavior: none;
+  }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: 'JetBrains Mono', monospace;
+    display: flex;
+    flex-direction: column;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  #editor {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+  #editor .cm-editor {
+    height: 100%;
+  }
+  .preview {
+    height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: none;
+    padding: 24px;
+    font-size: 15px;
+    line-height: 1.6;
+    overflow-wrap: break-word;
+  }
+  .preview[hidden] { display: none; }
+  .preview > :first-child { margin-top: 0; }
+  .preview h1, .preview h2, .preview h3, .preview h4 {
+    line-height: 1.3;
+    margin: 1.4em 0 0.6em;
+  }
+  .preview h1 { font-size: 1.6em; }
+  .preview h2 { font-size: 1.3em; }
+  .preview h3 { font-size: 1.1em; }
+  .preview h4 { font-size: 1em; }
+  .preview p, .preview ul, .preview ol, .preview table, .preview pre, .preview blockquote {
+    margin: 0 0 1em;
+  }
+  /* Markers sit inside the text column, so headings stay leftmost. */
+  .preview ul, .preview ol { padding-left: 2em; }
+  .preview a { color: var(--fg); }
+  .preview code {
+    font-family: inherit;
+    font-size: 0.9em;
+    background: var(--border);
+    border-radius: 3px;
+    padding: 0.1em 0.3em;
+  }
+  .preview pre {
+    background: var(--border);
+    border-radius: 4px;
+    padding: 12px 16px;
+    overflow-x: auto;
+  }
+  .preview pre code { background: none; padding: 0; }
+  .preview blockquote {
+    border-left: 2px solid var(--border);
+    color: var(--dim);
+    padding-left: 1em;
+    margin-left: 0;
+  }
+  .preview hr { border: none; border-top: 1px solid var(--border); margin: 1.5em 0; }
+  .preview table { border-collapse: collapse; display: block; overflow-x: auto; }
+  .preview th, .preview td {
+    border: 1px solid var(--border);
+    padding: 4px 12px;
+    text-align: left;
+    vertical-align: top;
+  }
+  .preview img { max-width: 100%; }
+  .statusbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 16px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--dim);
+    user-select: none;
+  }
+  .statusbar .stats, .statusbar .toggles {
+    display: flex;
+    gap: 18px;
+  }
+  .theme-toggle {
+    background: none;
+    border: none;
+    color: var(--dim);
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    padding: 0;
+  }
+  .theme-toggle:hover, .theme-toggle.on {
+    color: var(--fg);
+  }
+</style>
+</head>
+<body>
+  <div id="editor"><div class="preview" id="preview" hidden></div></div>
+  <div class="statusbar">
+    <div class="stats">
+      <span id="chars">0 chars</span>
+      <span id="words">0 words</span>
+      <span id="lines">1 line</span>
+    </div>
+    <div class="toggles">
+      <button class="theme-toggle" id="markdownToggle">md</button>
+      <button class="theme-toggle" id="themeToggle">light</button>
+    </div>
+  </div>
+
+<script src="codemirror.js"></script>
+<script>
+  const chars = document.getElementById('chars');
+  const words = document.getElementById('words');
+  const lines = document.getElementById('lines');
+  const themeToggle = document.getElementById('themeToggle');
+
+  let saved = '';
+  try { saved = localStorage.getItem('notes-content') || ''; } catch (e) {}
+
+  const editor = NotesEditor.create({
+    parent: document.getElementById('editor'),
+    doc: saved,
+    placeholder: 'start typing...',
+    preview: document.getElementById('preview')
+  });
+  // The native app drives the editor through this.
+  window.notesEditor = editor;
+
+  function updateStats() {
+    const stats = editor.stats();
+    chars.textContent = `${stats.chars} char${stats.chars !== 1 ? 's' : ''}`;
+    words.textContent = `${stats.words} word${stats.words !== 1 ? 's' : ''}`;
+    lines.textContent = `${stats.lines} line${stats.lines !== 1 ? 's' : ''}`;
+  }
+
+  editor.onDocChange(() => {
+    updateStats();
+    try { localStorage.setItem('notes-content', editor.getText()); } catch (e) {}
+  });
+
+  try {
+    const savedTheme = localStorage.getItem('notes-theme');
+    if (savedTheme === 'light') {
+      document.documentElement.setAttribute('data-theme', 'light');
+      themeToggle.textContent = 'dark';
+    }
+  } catch (e) {}
+
+  themeToggle.addEventListener('click', () => {
+    const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+    if (isLight) {
+      document.documentElement.removeAttribute('data-theme');
+      themeToggle.textContent = 'light';
+      try { localStorage.setItem('notes-theme', 'dark'); } catch (e) {}
+    } else {
+      document.documentElement.setAttribute('data-theme', 'light');
+      themeToggle.textContent = 'dark';
+      try { localStorage.setItem('notes-theme', 'light'); } catch (e) {}
+    }
+  });
+
+  const markdownToggle = document.getElementById('markdownToggle');
+  function setMarkdown(on) {
+    editor.setMarkdown(on);
+    markdownToggle.classList.toggle('on', on);
+    try { localStorage.setItem('notes-markdown', on ? 'on' : 'off'); } catch (e) {}
+  }
+  try { if (localStorage.getItem('notes-markdown') === 'on') setMarkdown(true); } catch (e) {}
+  markdownToggle.addEventListener('click', () => {
+    setMarkdown(!markdownToggle.classList.contains('on'));
+  });
+  // Links open outside, never inside the note's own page.
+  document.getElementById('preview').addEventListener('click', (event) => {
+    const link = event.target.closest('a[href]');
+    if (!link || link.getAttribute('href').startsWith('#')) return;
+    event.preventDefault();
+    window.open(link.href, '_blank');
+  });
+
+  updateStats();
+  editor.focus();
+</script>
+</body>
+</html>
