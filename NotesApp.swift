@@ -942,6 +942,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             let url = try existing ?? unusedSaveURL(for: note)
             try note.text.write(to: url, atomically: true, encoding: .utf8)
             diskText[note.id] = note.text
+            // A check's files would otherwise land in the real app's list.
+            if !runningACheck { NSDocumentController.shared.noteNewRecentDocumentURL(url) }
 
             library.notes[library.active].filePath = url.path
             store.save(library)
@@ -1023,6 +1025,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             let note = Note(text: text, filePath: url.path)
             library.notes.append(note)
             diskText[note.id] = text
+            // A check's files would otherwise land in the real app's list.
+            if !runningACheck { NSDocumentController.shared.noteNewRecentDocumentURL(url) }
             library.active = library.notes.count - 1
             store.save(library)
             refreshTabs()
@@ -1219,6 +1223,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         let fileMenu = NSMenu(title: "File")
         fileMenu.addItem(withTitle: "New Note", action: #selector(newTab), keyEquivalent: "t")
         fileMenu.addItem(withTitle: "Open…", action: #selector(showOpenPanel), keyEquivalent: "o")
+        let recentItem = fileMenu.addItem(withTitle: "Open Recent", action: nil, keyEquivalent: "")
+        let recentMenu = NSMenu(title: "Open Recent")
+        recentMenu.delegate = self
+        recentItem.submenu = recentMenu
         fileMenu.addItem(.separator())
         fileMenu.addItem(withTitle: "Save", action: #selector(saveNote), keyEquivalent: "s")
         let reveal = fileMenu.addItem(
@@ -2390,6 +2398,32 @@ private func drawIcon(pixels: Int, artwork: CGImage?) -> Data? {
 
     NSGraphicsContext.restoreGraphicsState()
     return rep.representation(using: .png, properties: [:])
+}
+
+// MARK: - Open Recent
+//
+// The list is the system's recent documents, which also feeds the Dock menu,
+// filled in each time the menu opens so it is never stale. Opening goes
+// through openFile, as Finder's opens do.
+
+extension AppDelegate: NSMenuDelegate {
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        let urls = NSDocumentController.shared.recentDocumentURLs
+            .filter { FileManager.default.fileExists(atPath: $0.path) }
+        for url in urls {
+            let item = ClosureMenuItem(url.lastPathComponent) { [weak self] in self?.openFile(url) }
+            item.toolTip = url.path
+            menu.addItem(item)
+        }
+        // An item with no action is greyed out by the menu itself.
+        guard !urls.isEmpty else {
+            menu.addItem(withTitle: "No Recent Files", action: nil, keyEquivalent: "")
+            return
+        }
+        menu.addItem(.separator())
+        menu.addItem(ClosureMenuItem("Clear Menu") { NSDocumentController.shared.clearRecentDocuments(nil) })
+    }
 }
 
 // MARK: - Entry point
