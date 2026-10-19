@@ -328,7 +328,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             .split(separator: "\n", omittingEmptySubsequences: false)
             .first { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
             .map(String.init) ?? ""
-        return unusedURL(named: firstLine, in: saveDirectory, extension: "txt")
+        return unusedURL(named: firstLine, in: saveDirectory, extension: "md")
     }
 
     /// `raw` made safe for a filename, with a numbered suffix if something

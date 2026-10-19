@@ -36,10 +36,10 @@ extension AppDelegate {
         // 1. A first save names the file from the note's first line.
         saveNote()
         wait(until: { false }, seconds: 0.4)
-        let expected = saveDirectory.appendingPathComponent("Peer Evaluation.txt")
+        let expected = saveDirectory.appendingPathComponent("Peer Evaluation.md")
         print("after first save: \(filesInSaveDirectory())")
         if !manager.fileExists(atPath: expected.path) {
-            problems.append("did not write Peer Evaluation.txt")
+            problems.append("did not write Peer Evaluation.md")
         }
         let written = (try? String(contentsOf: expected, encoding: .utf8)) ?? ""
         if written != original { problems.append("saved contents do not match the note") }
@@ -145,15 +145,15 @@ extension AppDelegate {
         let clash = library.notes[docIndex].filePath.map { URL(fileURLWithPath: $0).lastPathComponent }
         print("renamed onto a taken name: \(clash ?? "nil")")
         if clash != "From Finder.md" { problems.append("a rename with a free name did not keep it") }
-        library.notes.append(Note(text: "x", filePath: external.path))
+        library.notes.append(Note(text: "x", filePath: library.notes[docIndex].filePath))
         renameTab(at: library.notes.count - 1, to: "Peer Evaluation")
         let clobber = library.notes.last?.filePath.map { URL(fileURLWithPath: $0).lastPathComponent }
         print("renamed onto an existing file: \(clobber ?? "nil")")
-        if clobber != "Peer Evaluation 2.txt" { problems.append("a rename overwrote an existing file") }
+        if clobber != "Peer Evaluation 2.md" { problems.append("a rename overwrote an existing file") }
         if (try? String(contentsOf: expected, encoding: .utf8)) != edited {
             problems.append("a rename clobbered the file whose name it wanted")
         }
-        // Put it back: later steps expect From Finder.txt and a free "Peer Evaluation 2".
+        // Put it back: later steps expect From Finder.md and a free "Peer Evaluation 2".
         renameTab(at: library.notes.count - 1, to: "From Finder")
         library.notes.removeLast()
 
@@ -164,7 +164,7 @@ extension AppDelegate {
         closeTab(at: library.notes.count - 1)
         wait(until: { false }, seconds: 0.3)
         answerClose("save")
-        let keptFile = saveDirectory.appendingPathComponent("Keep me.txt")
+        let keptFile = saveDirectory.appendingPathComponent("Keep me.md")
         print("saved from the close question: \(manager.fileExists(atPath: keptFile.path)), notes \(library.notes.count)")
         if !manager.fileExists(atPath: keptFile.path) { problems.append("save on close did not write the note") }
         if library.notes.contains(where: { $0.text == "Keep me\nbody" }) { problems.append("save on close left the tab open") }
@@ -179,8 +179,8 @@ extension AppDelegate {
         library.active = library.notes.count - 1
         saveNote()
         wait(until: { false }, seconds: 0.4)
-        if !manager.fileExists(atPath: saveDirectory.appendingPathComponent("Untitled.txt").path) {
-            problems.append("an untitled note did not save as Untitled.txt")
+        if !manager.fileExists(atPath: saveDirectory.appendingPathComponent("Untitled.md").path) {
+            problems.append("an untitled note did not save as Untitled.md")
         }
 
         // 6. A name already taken gets a suffix rather than clobbering.
@@ -189,7 +189,7 @@ extension AppDelegate {
         saveNote()
         wait(until: { false }, seconds: 0.4)
         print("final directory: \(filesInSaveDirectory())")
-        if !manager.fileExists(atPath: saveDirectory.appendingPathComponent("Peer Evaluation 2.txt").path) {
+        if !manager.fileExists(atPath: saveDirectory.appendingPathComponent("Peer Evaluation 2.md").path) {
             problems.append("a second note with the same title overwrote the first")
         }
         if (try? String(contentsOf: expected, encoding: .utf8)) != edited {
@@ -922,7 +922,7 @@ final class PageRender: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
             run("window.__notesFindShow()")
             run("document.querySelector('.notes-find input').value = 'note';"
                 + " document.querySelector('.notes-find input').dispatchEvent(new Event('input'))")
-            run("window.__notesFlash('saved to ~/Documents/Notes/Peer Evaluation.txt')")
+            run("window.__notesFlash('saved to ~/Documents/Notes/Peer Evaluation.md')")
             snapshot(named: name)
         }
 
