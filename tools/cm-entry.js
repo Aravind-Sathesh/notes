@@ -132,6 +132,25 @@ const taskInput = EditorView.inputHandler.of((view, from, to, text) => {
   return true;
 });
 
+// Offsets of the mark inside each task's `[ ]` / `[x]`, in document order,
+// for toggling from the preview. Lines in fenced code are not tasks.
+function taskMarks(text) {
+  const marks = [];
+  let fence = null;
+  let at = 0;
+  for (const line of text.split("\n")) {
+    const open = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+    if (open && (!fence || (open[1][0] === fence[0] && open[1].length >= fence.length))) {
+      fence = fence ? null : open[1];
+    } else if (!fence) {
+      const task = /^((?:[ \t]*>)*[ \t]*(?:[-*+]|\d+[.)])[ \t]+\[)[ xX]\][ \t]+\S/.exec(line);
+      if (task) marks.push(at + task[1].length);
+    }
+    at += line.length + 1;
+  }
+  return marks;
+}
+
 // ---------------------------------------------------------------- markdown
 //
 // Notes can be any text file opened from disk, and the page can message the
@@ -149,6 +168,10 @@ md.use({
       return safeUrl(token.href) ? false : this.parser.parseInline(token.tokens);
     },
     image: ({ href, text }) => (safeUrl(href) ? false : escapeHtml(text)),
+    // Drawn rather than native, so it can match the page; clicks toggle it.
+    checkbox: ({ checked }) =>
+      `<span class="task-box" role="checkbox" tabindex="0" aria-checked="${checked}">` +
+      `<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.2l2.4 2.4 4.6-5"/></svg></span> `,
   },
 });
 
@@ -193,6 +216,29 @@ function create(options) {
     if (markdownOn) preview.innerHTML = md.parse(view.state.doc.toString());
   }
 
+  // The nth box in the preview is the nth task line in the note. Should the
+  // two ever disagree on the count, the click does nothing rather than tick
+  // the wrong line.
+  function toggleTask(box) {
+    const boxes = [...preview.querySelectorAll(".task-box")];
+    const marks = taskMarks(view.state.doc.toString());
+    const at = marks[boxes.indexOf(box)];
+    if (boxes.length !== marks.length || at === undefined) return;
+    const checked = box.getAttribute("aria-checked") === "true";
+    view.dispatch({ changes: { from: at, to: at + 1, insert: checked ? " " : "x" }, userEvent: "input" });
+  }
+  preview.addEventListener("click", (event) => {
+    const box = event.target.closest(".task-box");
+    if (box) toggleTask(box);
+  });
+  preview.addEventListener("keydown", (event) => {
+    const box = event.target.closest(".task-box");
+    if (!box || (event.key !== " " && event.key !== "Enter")) return;
+    event.preventDefault();
+    const index = [...preview.querySelectorAll(".task-box")].indexOf(box);
+    toggleTask(box);
+    preview.querySelectorAll(".task-box")[index]?.focus();
+  });
 
   // Shared by every note's state, so a state swapped in behaves identically
   // to the one swapped out.
