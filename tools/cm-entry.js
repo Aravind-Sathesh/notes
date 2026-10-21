@@ -88,6 +88,50 @@ const theme = EditorView.theme({
   ".cm-notesMatchCurrent": { backgroundColor: "var(--match-current)" },
 });
 
+// ------------------------------------------------------------------ tasks
+//
+// Tasks are stored as GFM's `- [ ] item`, so notes stay portable, but the
+// `- ` is hidden on every line but the one being edited, where it would
+// otherwise trip up the cursor. Typing `[ ] ` at a line's start writes it.
+
+const taskPrefix = /^(\s*)- (?=\[[ xX]\] )/;
+
+function taskDecorations(state) {
+  const builder = new RangeSetBuilder();
+  const active = new Set(state.selection.ranges.map((r) => state.doc.lineAt(r.head).number));
+  // ponytail: rescans the whole note per change, fine at note sizes.
+  for (let n = 1; n <= state.doc.lines; n++) {
+    if (active.has(n)) continue;
+    const line = state.doc.line(n);
+    const match = taskPrefix.exec(line.text);
+    if (match) {
+      const from = line.from + match[1].length;
+      builder.add(from, from + 2, Decoration.replace({}));
+    }
+  }
+  return builder.finish();
+}
+
+const taskField = StateField.define({
+  create: taskDecorations,
+  update: (deco, tr) => (tr.docChanged || tr.selection ? taskDecorations(tr.state) : deco),
+  provide: (field) => EditorView.decorations.from(field),
+});
+
+const taskInput = EditorView.inputHandler.of((view, from, to, text) => {
+  if (text !== " " || from !== to) return false;
+  const line = view.state.doc.lineAt(from);
+  const match = /^(\s*)\[[ xX]\]$/.exec(line.text.slice(0, from - line.from));
+  if (!match) return false;
+  const at = line.from + match[1].length;
+  view.dispatch({
+    changes: [{ from: at, insert: "- " }, { from, insert: " " }],
+    selection: { anchor: from + 3 },
+    userEvent: "input.type",
+  });
+  return true;
+});
+
 // ---------------------------------------------------------------- markdown
 //
 // Notes can be any text file opened from disk, and the page can message the
@@ -149,6 +193,7 @@ function create(options) {
     if (markdownOn) preview.innerHTML = md.parse(view.state.doc.toString());
   }
 
+
   // Shared by every note's state, so a state swapped in behaves identically
   // to the one swapped out.
   const extensions = [
@@ -159,6 +204,8 @@ function create(options) {
     EditorState.allowMultipleSelections.of(true),
     placeholderExt(options.placeholder || ""),
     matchField,
+    taskField,
+    taskInput,
     theme,
     keymap.of([...defaultKeymap, ...historyKeymap]),
     EditorView.updateListener.of((update) => {
