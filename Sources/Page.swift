@@ -60,6 +60,7 @@ func makeWebView(
     configuration.userContentController.add(handler, name: "save")
     configuration.userContentController.add(handler, name: "theme")
     configuration.userContentController.add(handler, name: "closeChoice")
+    configuration.userContentController.add(handler, name: "outlinePinned")
     // Scripts at the same injection time run in the order they are added.
     for source in [Bridge.style, Bridge.source] {
         configuration.userContentController.addUserScript(

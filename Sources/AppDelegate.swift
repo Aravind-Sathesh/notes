@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     private let store = NoteStore()
     var library = Library.empty
     private var theme = Theme.dark
+    private var keepOutlineOpenItem: NSMenuItem?
 
     /// What each file-bound note's file held when it was last opened, saved or
     /// re-read: the baseline that both "unsaved" and "changed on disk" are
@@ -471,6 +472,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     // The bar itself lives in the page, above its status bar, so it shares the
     // page's fonts, colours and metrics. These just drive it.
 
+    @objc private func toggleOutlinePinned() {
+        webView?.evaluateJavaScript("window.__notesToggleOutlinePinned()")
+    }
+
     @objc private func toggleMarkdown() {
         webView?.evaluateJavaScript("document.getElementById('markdownToggle').click()")
     }
@@ -535,6 +540,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         case "closeChoice":
             guard let choice = message.body as? String else { return }
             answerClose(choice)
+
+        case "outlinePinned":
+            // The pin in the page and the View menu item stay in step.
+            keepOutlineOpenItem?.state = message.body as? Bool == true ? .on : .off
 
         case "theme":
             guard let variables = message.body as? [String: String],
@@ -632,6 +641,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         let viewMenu = NSMenu(title: "View")
         let markdown = viewMenu.addItem(withTitle: "Toggle Markdown", action: #selector(toggleMarkdown), keyEquivalent: "m")
         markdown.keyEquivalentModifierMask = [.command, .option]
+        let keepOutline = viewMenu.addItem(
+            withTitle: "Keep Outline Open",
+            action: #selector(toggleOutlinePinned),
+            keyEquivalent: "o"
+        )
+        keepOutline.keyEquivalentModifierMask = [.command, .option]
+        keepOutlineOpenItem = keepOutline
         viewMenu.addItem(.separator())
         viewMenu.addItem(withTitle: "Actual Size", action: #selector(actualSize), keyEquivalent: "0")
         viewMenu.addItem(withTitle: "Zoom In", action: #selector(zoomIn), keyEquivalent: "+")

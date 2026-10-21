@@ -124,6 +124,27 @@ extension AppDelegate {
         if landing != "[\"# Top\",\"## Sub ##\",\"### Deep\",\"Under **lined**\",\"> ## Quoted\"]" {
             problems.append("an outline offset does not land on its heading")
         }
+        // Kept open, the list shows without a hover and the text makes room;
+        // toggled again, it goes back to opening on hover (the card fades out
+        // on a delay, so only the room it took is checked).
+        let pinnedScript = "window.__notesToggleOutlinePinned() + ',' + getComputedStyle(document.querySelector('.notes-card')).visibility"
+            + " + ',' + getComputedStyle(document.querySelector('#editor .cm-content')).paddingRight"
+        let pinned = evaluate(pinnedScript) as? String
+        let unpinned = evaluate(pinnedScript) as? String
+        print("outline kept open: \(pinned ?? "nil"), then \(unpinned ?? "nil")")
+        if pinned != "true,visible,304px" || unpinned?.hasPrefix("false,") != true || unpinned?.hasSuffix(",72px") != true {
+            problems.append("keeping the outline open did not show it beside the text")
+        }
+        // The pin in the drawer does the same, and fills while pinned.
+        let pinScript = "document.querySelector('.notes-pin').click();"
+            + " document.querySelector('.notes-pin').getAttribute('aria-pressed') + ','"
+            + " + getComputedStyle(document.querySelector('.notes-pin .head')).fill"
+        let pinOn = evaluate(pinScript) as? String
+        let pinOff = evaluate(pinScript) as? String
+        print("pin clicked: \(pinOn ?? "nil"), then \(pinOff ?? "nil")")
+        if pinOn?.hasPrefix("true,rgb") != true || pinOff != "false,none" {
+            problems.append("the outline's pin did not keep it open")
+        }
 
         // 4c. Renaming a note bound to a file renames the file, keeps its
         // extension, survives a case-only change, and never clobbers.
@@ -939,6 +960,18 @@ final class PageRender: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
             run("window.__notesRestore(\(text)); window.__notesShowOutline(true)")
             wait(seconds: 0.3) { false }
             snapshot(named: "page-outline")
+            // A snapshot's window does not run transitions, so the pin's
+            // colour change is made instant.
+            run("document.head.insertAdjacentHTML('beforeend', '<style>.notes-pin { transition: none !important; }</style>')")
+            run("window.__notesToggleOutlinePinned()")
+            wait(seconds: 0.3) { false }
+            snapshot(named: "page-outline-pinned")
+            // Hovered, so the pin shows its hover state.
+            run("document.head.insertAdjacentHTML('beforeend', '<style id=\"pin-hover\">.notes-pin { color: var(--fg) !important; background-color: var(--border) !important; }</style>')")
+            wait(seconds: 0.2) { false }
+            snapshot(named: "page-outline-pinned-hover")
+            run("document.getElementById('pin-hover').remove()")
+            run("window.__notesToggleOutlinePinned()")
             run("document.head.insertAdjacentHTML('beforeend', '<style>.notes-card { opacity: 1 !important;"
                 + " visibility: visible !important; transform: none !important; transition: none !important; }"
                 + " .notes-ticks { opacity: 0 !important; transition: none !important; }</style>')")

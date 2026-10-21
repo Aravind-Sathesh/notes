@@ -135,8 +135,18 @@
   ticks.className = 'notes-ticks';
   var card = document.createElement('div');
   card.className = 'notes-card';
+  // Pins the drawer open; hollow at rest, filled while pinned.
+  var pin = document.createElement('button');
+  pin.type = 'button';
+  pin.className = 'notes-pin';
+  pin.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">'
+    + '<path class="head" d="M9 3h6l-1 6 3 4H7l3-4z"/><path d="M12 13v8"/></svg>';
+  // Clicking it leaves the caret where it was in the note.
+  pin.addEventListener('mousedown', function (event) { event.preventDefault(); });
+  pin.addEventListener('click', function () { pinOutline(!outline.classList.contains('pinned')); });
   outline.appendChild(ticks);
   outline.appendChild(card);
+  outline.appendChild(pin);
 
   // --bg is a hex colour and the macOS 12 web view has no color-mix, so the
   // translucent tint is worked out here, and again whenever the theme flips.
@@ -250,6 +260,22 @@
   window.__notesShowOutline = function (on) {
     outline.hidden = !on;
     renderOutline();
+  };
+  // Kept open, the list stays out and the note's text stops short of it.
+  function pinOutline(on) {
+    outline.classList.toggle('pinned', on);
+    editorBox.classList.toggle('outline-pinned', on);
+    pin.setAttribute('aria-pressed', on ? 'true' : 'false');
+    pin.title = on ? 'Let the outline close' : 'Keep the outline open';
+    window.webkit.messageHandlers.outlinePinned.postMessage(on);
+    try { localStorage.setItem('notes-outline', on ? 'pinned' : 'hover'); } catch (e) {}
+  }
+  var pinnedAtLaunch = false;
+  try { pinnedAtLaunch = localStorage.getItem('notes-outline') === 'pinned'; } catch (e) {}
+  pinOutline(pinnedAtLaunch);
+  window.__notesToggleOutlinePinned = function () {
+    pinOutline(!outline.classList.contains('pinned'));
+    return outline.classList.contains('pinned');
   };
   window.__notesOutlineTitles = function () {
     return outline.hidden ? null : editor.headings().map(function (h) { return h.title; });

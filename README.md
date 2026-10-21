@@ -6,7 +6,7 @@ A small tabbed notes app for macOS, for plain text and markdown. A native window
 - Open `.txt` and `.md` files with Cmd+O, Open Recent, or Finder's Open With
 - Click the selected tab to rename it; a note with a file renames the file
 - A dot on tabs with unsaved changes; files changed by other apps are picked up when you switch back
-- Markdown preview (Cmd+Option+M), and a heading outline on the right edge for `.md` files
+- Markdown preview (Cmd+Option+M), and a heading outline on the right edge for `.md` files (View > Keep Outline Open, Cmd+Option+O, pins it)
 - Find, multiple cursors, zoom, light and dark themes
 
 ## Install
