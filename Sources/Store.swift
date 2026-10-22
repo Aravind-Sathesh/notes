@@ -53,14 +53,16 @@ struct Note: Codable {
     /// Set by renaming the tab. Optional for the same reason as `filePath`.
     var name: String?
 
-    /// A rename wins; otherwise the tab names itself from the first line,
-    /// without the markdown markers (`# `, `- `, `> `) in front of it.
+    /// A rename wins, then the file's name without its extension; a note
+    /// with neither names itself from the first line, without the markdown
+    /// markers (`# `, `- `, `> `) in front of it.
     var title: String {
+        let fileName = filePath.map { URL(fileURLWithPath: $0).deletingPathExtension().lastPathComponent }
         let firstLine = text
             .split(separator: "\n", omittingEmptySubsequences: false)
             .first { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
         let bare = firstLine?.trimmingCharacters(in: CharacterSet(charactersIn: "#-*> \t"))
-        guard let line = name ?? bare, !line.isEmpty else {
+        guard let line = name ?? fileName ?? bare, !line.isEmpty else {
             return "Untitled"
         }
         return line.count > 28 ? String(line.prefix(28)) + "…" : line
